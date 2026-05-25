@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>핵심가치 선정 · 투표</title>
+<link rel="preconnect" href="https://fastly.jsdelivr.net" crossorigin />
+<link rel="stylesheet" as="style" crossorigin
+  href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<style>
+  :root{
+    --green-700:#1b8a3a;
+    --green-600:#22a248;
+    --green-500:#2bb24c;
+    --green-100:#e7f5ec;
+    --green-50:#f2faf5;
+    --ink:#2b2f33;
+    --ink-soft:#5a6168;
+    --line:#e3e7ea;
+    --line-soft:#eef1f3;
+    --bg:#eceff1;
+    --card:#ffffff;
+    --gray-circle:#c9ced2;
+    --shadow:0 1px 3px rgba(0,0,0,.06), 0 10px 30px rgba(0,0,0,.05);
+    --radius:14px;
+    --fs-base:17px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html{font-size:var(--fs-base);}
+  body{
+    margin:0;font-family:'Pretendard',-apple-system,BlinkMacSystemFont,sans-serif;
+    background:var(--bg);color:var(--ink);
+    line-height:1.55;-webkit-font-smoothing:antialiased;
+    padding:0;min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:1.4rem 1.1rem 4rem;}
+  .wrap.narrow{max-width:560px;}
+
+  /* ---------- 공통 컴포넌트 ---------- */
+  .topbar{
+    display:flex;align-items:center;gap:.6rem;margin-bottom:1.3rem;
+  }
+  .topbar .check{
+    width:2.1rem;height:2.1rem;border-radius:50%;background:var(--green-500);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .topbar .check svg{width:1.1rem;height:1.1rem;}
+  .topbar h1{font-size:1.75rem;font-weight:800;margin:0;letter-spacing:-.02em;}
+  .topbar .ribbon{margin-left:auto;width:2.4rem;height:3rem;background:var(--green-600);
+    clip-path:polygon(0 0,100% 0,100% 100%,50% 82%,0 100%);flex-shrink:0;}
+
+  .card{
+    background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:1.6rem;margin-bottom:1.1rem;border:1px solid var(--line-soft);
+  }
+  .card h2{font-size:1.18rem;font-weight:800;margin:0 0 .2rem;letter-spacing:-.01em;}
+  .card .sub{color:var(--ink-soft);font-size:.92rem;margin:0 0 1.1rem;}
+
+  label.fld{display:block;font-weight:700;font-size:.92rem;margin:0 0 .4rem;color:var(--ink);}
+  input[type=text],input[type=number],textarea,select{
+    width:100%;font:inherit;font-size:1rem;padding:.8rem .9rem;border:1.5px solid var(--line);
+    border-radius:10px;background:#fff;color:var(--ink);transition:border-color .15s;
+  }
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--green-500);}
+  textarea{resize:vertical;min-height:4rem;line-height:1.5;}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:.4rem;
+    font:inherit;font-weight:700;font-size:1rem;padding:.85rem 1.4rem;border:none;
+    border-radius:11px;cursor:pointer;transition:transform .08s, background .15s, opacity .15s;
+    background:var(--green-600);color:#fff;
+  }
+  .btn:active{transform:scale(.98);}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+  .btn.full{width:100%;}
+  .btn.lg{padding:1rem 1.4rem;font-size:1.08rem;}
+  .btn.ghost{background:var(--green-100);color:var(--green-700);}
+  .btn.outline{background:#fff;color:var(--ink-soft);border:1.5px solid var(--line);}
+  .btn.gray{background:#eceff1;color:var(--ink-soft);}
+
+  .row{display:flex;gap:.7rem;flex-wrap:wrap;}
+  .row > *{flex:1;}
+  .muted{color:var(--ink-soft);font-size:.88rem;}
+  .hidden{display:none !important;}
+  .center{text-align:center;}
+
+  .pill{display:inline-block;background:var(--green-100);color:var(--green-700);
+    font-weight:700;font-size:.78rem;padding:.25rem .6rem;border-radius:999px;}
+
+  .toast{
+    position:fixed;left:50%;bottom:1.4rem;transform:translateX(-50%) translateY(2rem);
+    background:var(--ink);color:#fff;padding:.8rem 1.3rem;border-radius:10px;font-size:.92rem;
+    font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;pointer-events:none;
+    transition:opacity .25s, transform .25s;z-index:999;max-width:90vw;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* ---------- 모드 선택 (랜딩) ---------- */
+  .landing-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:.4rem;}
+  .mode-card{
+    border:1.5px solid var(--line);border-radius:var(--radius);padding:1.6rem 1.3rem;
+    cursor:pointer;transition:border-color .15s, background .15s, transform .08s;background:#fff;
+  }
+  .mode-card:hover{border-color:var(--green-500);background:var(--green-50);}
+  .mode-card:active{transform:scale(.99);}
+  .mode-card .ic{font-size:1.8rem;margin-bottom:.5rem;}
+  .mode-card h3{margin:0 0 .3rem;font-size:1.12rem;font-weight:800;}
+  .mode-card p{margin:0;color:var(--ink-soft);font-size:.9rem;}
+
+  /* ---------- 단계 표시 ---------- */
+  .steps{display:flex;gap:.5rem;margin-bottom:1.2rem;}
+  .steps .s{flex:1;text-align:center;padding:.55rem .3rem;border-radius:9px;
+    font-size:.82rem;font-weight:700;background:#fff;border:1.5px solid var(--line);color:var(--ink-soft);}
+  .steps .s.active{background:var(--green-600);border-color:var(--green-600);color:#fff;}
+  .steps .s.done{background:var(--green-100);border-color:var(--green-100);color:var(--green-700);}
+
+  /* ---------- 세션 코드 표시 ---------- */
+  .code-box{background:var(--green-50);border:1.5px dashed var(--green-500);border-radius:var(--radius);
+    padding:1.4rem;text-align:center;margin-bottom:1.1rem;}
+  .code-box .lbl{font-size:.85rem;color:var(--ink-soft);font-weight:600;margin-bottom:.3rem;}
+  .code-box .code{font-size:2.6rem;font-weight:800;letter-spacing:.35rem;color:var(--green-700);
+    font-variant-numeric:tabular-nums;}
+  .code-box .url{margin-top:.5rem;font-size:.85rem;color:var(--ink-soft);word-break:break-all;}
+
+  /* ---------- 후보 입력 ---------- */
+  .cand-item{display:flex;gap:.5rem;align-items:flex-start;margin-bottom:.6rem;}
+  .cand-item .idx{width:1.9rem;height:1.9rem;flex-shrink:0;background:var(--green-100);
+    color:var(--green-700);border-radius:8px;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:.85rem;margin-top:.05rem;}
+  .cand-item input{flex:1;}
+  .cand-item .del{background:none;border:none;color:#c0392b;cursor:pointer;font-size:1.3rem;
+    padding:.4rem .5rem;line-height:1;flex-shrink:0;}
+
+  /* ---------- 투표 화면 ---------- */
+  .vote-cand{border:1.5px solid var(--line);border-radius:var(--radius);padding:1.1rem 1.1rem 1.2rem;
+    margin-bottom:1rem;background:#fff;transition:border-color .15s;}
+  .vote-cand.answered{border-color:var(--green-500);background:var(--green-50);}
+  .vote-cand .name{font-weight:800;font-size:1.12rem;margin-bottom:.85rem;display:flex;
+    align-items:center;gap:.5rem;}
+  .vote-cand .name .num{font-size:.78rem;background:var(--ink);color:#fff;border-radius:6px;
+    padding:.1rem .45rem;font-weight:700;}
+  .scale{display:grid;grid-template-columns:repeat(5,1fr);gap:.4rem;}
+  .scale .opt{border:1.5px solid var(--line);border-radius:10px;padding:.6rem .2rem;text-align:center;
+    cursor:pointer;transition:all .12s;background:#fff;}
+  .scale .opt .n{font-size:1.25rem;font-weight:800;color:var(--ink-soft);line-height:1;}
+  .scale .opt .t{font-size:.66rem;color:var(--ink-soft);margin-top:.3rem;font-weight:600;}
+  .scale .opt:hover{border-color:var(--green-500);}
+  .scale .opt.sel{background:var(--green-600);border-color:var(--green-600);}
+  .scale .opt.sel .n,.scale .opt.sel .t{color:#fff;}
+
+  /* ---------- 척도 범례 ---------- */
+  .legend{display:grid;grid-template-columns:repeat(5,1fr);gap:.5rem;margin:.4rem 0 0;}
+  .legend .lg{border:1.5px solid var(--line);border-radius:10px;padding:.7rem .3rem;text-align:center;}
+  .legend .lg .circle{width:2.6rem;height:2.6rem;border-radius:50%;background:var(--gray-circle);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.9rem;
+    margin:0 auto .4rem;}
+  .legend .lg.hi{border-color:var(--green-500);}
+  .legend .lg.hi .circle{background:var(--green-500);}
+  .legend .lg.top .circle{background:var(--green-700);}
+  .legend .lg .h{font-weight:800;font-size:.86rem;}
+  .legend .lg .d{font-size:.7rem;color:var(--ink-soft);margin-top:.15rem;}
+
+  /* ---------- 제안 목록 (진행자) ---------- */
+  .sugg-row{display:flex;align-items:center;gap:.75rem;padding:.7rem .2rem;
+    border-bottom:1px solid var(--line-soft);transition:opacity .15s;}
+  .sugg-row:last-child{border-bottom:none;}
+  .sugg-row.excluded{opacity:.4;}
+  .sugg-row.excluded .sugg-name{text-decoration:line-through;}
+  .sugg-check{position:relative;flex-shrink:0;width:1.5rem;height:1.5rem;cursor:pointer;}
+  .sugg-check input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;margin:0;}
+  .sugg-check .box{position:absolute;inset:0;border:2px solid var(--line);border-radius:6px;
+    background:#fff;transition:all .12s;}
+  .sugg-check input:checked + .box{background:var(--green-600);border-color:var(--green-600);}
+  .sugg-check input:checked + .box::after{content:'';position:absolute;left:.42rem;top:.18rem;
+    width:.32rem;height:.62rem;border:solid #fff;border-width:0 .16rem .16rem 0;transform:rotate(45deg);}
+  .sugg-info{flex:1;min-width:0;}
+  .sugg-name{font-weight:800;font-size:1.05rem;letter-spacing:-.01em;}
+  .sugg-meta{font-size:.76rem;color:var(--ink-soft);margin-top:.1rem;}
+  .sugg-cnt{flex-shrink:0;background:var(--green-100);color:var(--green-700);font-weight:800;
+    font-size:.85rem;padding:.25rem .6rem;border-radius:999px;font-variant-numeric:tabular-nums;}
+  .sugg-cnt.manual{background:#eef1f3;color:var(--ink-soft);font-weight:700;}
+
+  /* 병합 모드 */
+  .mergebar{display:flex;align-items:center;justify-content:space-between;gap:.6rem;
+    background:var(--green-50);border:1.5px solid var(--green-500);border-radius:11px;
+    padding:.7rem .9rem;margin-bottom:.6rem;flex-wrap:wrap;}
+  .mergebar #mergehint{font-size:.86rem;font-weight:700;color:var(--green-700);}
+  .mergebar-btns{display:flex;gap:.4rem;}
+  .mergebar-btns .btn{padding:.55rem .9rem;font-size:.88rem;}
+  .sugg-row.picked{background:var(--green-50);border-radius:8px;}
+  .sugg-check.pick input:checked + .box{background:var(--green-500);border-color:var(--green-500);}
+  .merge-tag{display:inline-block;background:var(--green-600);color:#fff;font-size:.66rem;
+    font-weight:800;padding:.08rem .4rem;border-radius:5px;vertical-align:middle;margin-left:.2rem;}
+  .unmerge{color:#c0392b;cursor:pointer;text-decoration:underline;font-weight:700;}
+
+  /* ---------- 결과 / 집계 ---------- */
+  .res-row{display:flex;align-items:center;gap:.9rem;padding:.85rem 0;border-bottom:1px solid var(--line-soft);}
+  .res-row:last-child{border-bottom:none;}
+  .res-row .rank{width:2.3rem;height:2.3rem;border-radius:50%;background:#eceff1;color:var(--ink-soft);
+    display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;}
+  .res-row.top3 .rank{background:var(--green-600);color:#fff;}
+  .res-row .info{flex:1;min-width:0;}
+  .res-row .info .nm{font-weight:800;font-size:1.05rem;}
+  .res-row .info .meta{font-size:.8rem;color:var(--ink-soft);}
+  .res-row .bar-wrap{flex:1.6;}
+  .res-row .bar{height:.7rem;border-radius:999px;background:#eceff1;overflow:hidden;}
+  .res-row .bar > i{display:block;height:100%;background:var(--green-500);border-radius:999px;
+    transition:width .6s ease;}
+  .res-row.top3 .bar > i{background:var(--green-600);}
+  .res-row .score{font-weight:800;font-size:1.1rem;width:4.2rem;text-align:right;flex-shrink:0;
+    font-variant-numeric:tabular-nums;}
+  .res-row .avg{font-size:.74rem;color:var(--ink-soft);text-align:right;}
+
+  .tie-warn{background:#fff8e6;border:1.5px solid #f0c14b;border-radius:11px;padding:.9rem 1.1rem;
+    font-size:.9rem;color:#8a6d00;margin-top:1rem;font-weight:600;}
+
+  .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;margin-bottom:1.2rem;}
+  .stat{background:var(--green-50);border-radius:11px;padding:1rem .8rem;text-align:center;}
+  .stat .v{font-size:1.7rem;font-weight:800;color:var(--green-700);line-height:1;}
+  .stat .l{font-size:.78rem;color:var(--ink-soft);margin-top:.35rem;font-weight:600;}
+
+  .voter-chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.7rem;}
+  .voter-chips .chip{background:var(--green-100);color:var(--green-700);font-size:.8rem;font-weight:600;
+    padding:.3rem .65rem;border-radius:999px;}
+
+  .err-banner{background:#fdecea;border:1.5px solid #f5c6c2;color:#a4271c;border-radius:11px;
+    padding:.85rem 1.1rem;font-size:.9rem;font-weight:600;margin-bottom:1rem;}
+
+  .spinner{width:1.1rem;height:1.1rem;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;
+    border-radius:50%;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .dot-live{display:inline-block;width:.55rem;height:.55rem;border-radius:50%;background:var(--green-500);
+    margin-right:.35rem;animation:pulse 1.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+  .help{font-size:.85rem;color:var(--ink-soft);background:var(--green-50);border-radius:10px;
+    padding:.8rem 1rem;margin-top:.6rem;line-height:1.6;}
+
+  @media (max-width:560px){
+    :root{--fs-base:16px;}
+    .topbar h1{font-size:1.4rem;}
+    .landing-grid{grid-template-columns:1fr;}
+    .scale{gap:.3rem;}
+    .scale .opt .t{font-size:.6rem;}
+    .res-row{flex-wrap:wrap;}
+    .res-row .bar-wrap{flex-basis:100%;order:3;}
+    .legend{grid-template-columns:repeat(5,1fr);gap:.25rem;}
+    .legend .lg{padding:.5rem .15rem;}
+    .legend .lg .circle{width:2rem;height:2rem;font-size:.78rem;}
+    .legend .lg .h{font-size:.72rem;}
+    .legend .lg .d{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="topbar wrap" style="padding-bottom:0;margin-bottom:.6rem;">
+  <span class="check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+  <h1>핵심가치 선정</h1>
+  <span class="ribbon"></span>
+</div>
+
+<!-- ============ 화면 컨테이너 ============ -->
+<div id="app"></div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
