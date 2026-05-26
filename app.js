@@ -10,7 +10,7 @@
    ⚙️ 설정 :  배포 후 아래 GAS_URL 한 줄만 본인 것으로 교체하세요.
    (GOOGLE_SHEETS_SETUP.md 참고)
 ------------------------------------------------------------------ */
-const GAS_URL = "여기에_본인_APPS_SCRIPT_웹앱_URL_을_붙여넣으세요";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwOLQ_VOL1ceZQBRMUcL2d2-C1Zg8Tzb_MCP5oRY9pSxiEJte34iXFYqny9AdSCg4XU/exec";
 
 /* 5점 척도 정의 (슬라이드 기준 그대로) */
 const SCALE = [
