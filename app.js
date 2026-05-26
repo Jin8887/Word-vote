@@ -10,7 +10,7 @@
    ⚙️ 설정 :  배포 후 아래 GAS_URL 한 줄만 본인 것으로 교체하세요.
    (GOOGLE_SHEETS_SETUP.md 참고)
 ------------------------------------------------------------------ */
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwOLQ_VOL1ceZQBRMUcL2d2-C1Zg8Tzb_MCP5oRY9pSxiEJte34iXFYqny9AdSCg4XU/exec";
+const GAS_URL = "여기에_본인_APPS_SCRIPT_웹앱_URL_을_붙여넣으세요";
 
 /* 5점 척도 정의 (슬라이드 기준 그대로) */
 const SCALE = [
@@ -637,7 +637,7 @@ function drawVoterSuggest(){
         <p class="sub"><b>${esc(VOTE.name)}</b>${VOTE.team?` · ${esc(VOTE.team)}`:''} 님 · 비전과 정합성이 높다고 생각하는 핵심가치를 제안하세요. 여러 개 제안할 수 있습니다.</p>
 
         <div class="row" style="gap:.5rem;">
-          <input type="text" id="cand" maxlength="30" placeholder="예: 도전, 신뢰, 협업…" style="flex:2;">
+          <input type="text" id="cand" maxlength="30" placeholder="예: 도전, 신뢰, 협업…" style="flex:2;" autocomplete="off" autocapitalize="off" enterkeyhint="done">
           <button class="btn" id="add" style="flex:1;">제안</button>
         </div>
 
@@ -706,7 +706,7 @@ function drawVoterBallot(){
       <div class="name"><span class="num">${ci+1}</span>${esc(nm)}</div>
       <div class="scale">
         ${SCALE.map(s=>`<div class="opt" data-ci="${ci}" data-v="${s.n}">
-          <div class="n">${s.n}</div><div class="t">${s.t}</div></div>`).join('')}
+          <div class="n">${s.n}</div><div class="t">${s.t}</div><div class="od">${s.d}</div></div>`).join('')}
       </div>
     </div>`).join('');
 
@@ -718,7 +718,7 @@ function drawVoterBallot(){
         <div class="legend">${legend}</div>
       </div>
       ${cands}
-      <div class="card" style="position:sticky;bottom:.6rem;box-shadow:0 -2px 16px rgba(0,0,0,.08);">
+      <div class="card submit-bar">
         <div class="muted center" id="progress" style="margin-bottom:.7rem;">0 / ${VOTE.candidates.length} 응답 완료</div>
         <button class="btn lg full" id="submit" disabled>제출하기</button>
       </div>
