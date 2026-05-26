@@ -9,7 +9,12 @@
    - v2.1 변경: 진행자 "직접 추가" 후보도 시트에 저장 + 진행자가 삭제 가능
      · 진행자 전용 식별자(host_<code>)로 본인이 추가한 행만 삭제
      · 참여자가 같은 키워드를 제안하면 진행자 추가는 가려짐(다른 사람도 제안한 후보가 됨)
-   ※ 본 변경은 GAS Code.gs 측 수정도 필요합니다 (별도 가이드 참고)
+   - v2.2 변경: 진행자가 화면을 나갔다가 다시 들어와도 세션 자동 복원
+     · localStorage(cv_host)에 코드/제목/병합/제외 상태 보존
+     · 진행자 모드 진입 시 서버에 phase 확인 → 적절한 화면으로 자동 이동
+     · 자동 복원 실패 시(네트워크 오류 등) drawHostRecovery로 사용자 선택 안내
+     · 같은 브라우저 한정. 다른 기기/브라우저 재진입은 별도 인증이 필요하므로 미지원
+   ※ 본 변경은 GAS Code.gs 측 수정도 필요합니다 (v2 시점에서 이미 완료)
    ========================================================= */
 
 'use strict';
@@ -157,12 +162,123 @@ function renderLanding(){
 /* =========================================================
    진행자 (HOST)  ―  실시간 후보 제안 버전
    ========================================================= */
-let HOST = null;   // { code, title }
+let HOST = null;   // { code, title, candidates?, merges?, excluded? }
 
-function renderHostSetup(){
+/* 진행자 상태를 localStorage에 저장 (병합/제외 등 메타정보 포함)
+   - 화면을 나갔다 들어와도 같은 브라우저면 자동 복원 가능 */
+function saveHostState(){
+  if(!HOST || !HOST.code) return;
+  HOST.merges   = HOST_MERGES;
+  HOST.excluded = HOST_EXCLUDED;
+  store.set('cv_host', HOST);
+}
+
+/* 진행자 모드 진입 — v2.2: 진행 중인 세션 자동 복원 지원
+   - localStorage에 cv_host가 있고 GAS 연동이 설정되어 있으면 서버에서 phase 확인
+   - phase에 맞는 화면으로 자동 이동 (제안중 → drawHostSuggest, 투표중 → drawHostLive)
+   - 서버에 세션이 없으면(만료/삭제) cv_host 정리 후 새 세션 화면
+   - 네트워크 오류는 사용자에게 "다시 시도/새 세션 만들기" 선택지 제공 */
+async function renderHostSetup(){
   stopPolling();
-  HOST = store.get('cv_host') || { code:genCode(), title:'' };
-  drawHostSetup();
+  const saved = store.get('cv_host');
+
+  // 저장된 세션이 없거나 연동 미설정이면 곧장 새 세션 화면
+  if(!saved || !saved.code || !isConfigured()){
+    HOST = saved || { code:genCode(), title:'' };
+    drawHostSetup();
+    return;
+  }
+
+  // 자동 복원 시도 — 로딩 화면 잠깐 표시
+  app.innerHTML = '';
+  app.appendChild(el(`
+    <div class="wrap narrow">
+      <div class="card center" style="padding:2.5rem 1.5rem;">
+        <div class="spinner" style="margin:0 auto 1rem;"></div>
+        <p style="font-weight:600;">진행 중인 세션을 확인하고 있습니다…</p>
+        <p class="muted" style="font-size:.85rem;margin-top:.4rem;">코드 <b>${esc(saved.code)}</b></p>
+      </div>
+    </div>
+  `));
+
+  try{
+    const data = await gasGet({ action:'getSession', code:saved.code });
+    // 세션 존재 — 적절한 화면으로 복원
+    HOST = {
+      code: data.code,
+      title: data.title || saved.title || '',
+      candidates: data.candidates && data.candidates.length ? data.candidates : (saved.candidates||[])
+    };
+    // 진행자가 작업해둔 병합/제외 메타 복원 (서버엔 없으므로 localStorage에서)
+    HOST_MERGES   = saved.merges   || [];
+    HOST_EXCLUDED = saved.excluded || {};
+    HOST_RAW = []; HOST_SUGG = []; MERGE_PICK = {}; MERGE_MODE = false;
+
+    const phase = data.phase || 'suggest';
+    if(phase === 'vote'){
+      drawHostLive();
+    } else if(phase === 'closed'){
+      drawHostResult();
+    } else {
+      drawHostSuggest();
+    }
+    toast(`세션 ${HOST.code}을(를) 이어서 진행합니다`);
+  }catch(err){
+    const msg = String(err && err.message || err);
+    // 세션이 서버에 없으면 무효한 캐시 — 정리 후 새 세션 화면
+    if(/찾을 수 없|NOT_FOUND/.test(msg)){
+      store.del('cv_host');
+      HOST = { code:genCode(), title:'' };
+      drawHostSetup();
+      toast('이전 세션은 만료되었습니다. 새 세션을 만들어 주세요');
+    } else {
+      // 네트워크/일시 오류 — 사용자가 선택하도록 안내 화면
+      HOST = saved;
+      drawHostRecovery(msg);
+    }
+  }
+}
+
+/* 자동 복원 실패 시 사용자 선택 화면
+   - "다시 시도" → renderHostSetup 재호출
+   - "새 세션 만들기" → 기존 cv_host 정리 후 새 코드로 drawHostSetup
+   - "이대로 이어서 진행" → 서버 확인 없이 그냥 drawHostSuggest (네트워크 복구 시 폴링으로 동기화) */
+function drawHostRecovery(errMsg){
+  app.innerHTML = '';
+  app.appendChild(el(`
+    <div class="wrap narrow">
+      <div class="card">
+        <h2>⚠️ 진행 중인 세션 확인 실패</h2>
+        <p class="sub">이전에 만든 세션 <b>${esc(HOST.code)}</b>의 상태를 서버에서 확인하지 못했습니다.<br>
+          <span class="muted" style="font-size:.85rem;">사유: ${esc(errMsg)}</span></p>
+
+        <div class="help" style="margin-top:.8rem;">
+          ① 잠시 후 <b>다시 시도</b>해 보세요 (네트워크 일시 장애일 수 있습니다)<br>
+          ② 세션이 살아있다고 확신하면 <b>이대로 이어서 진행</b>을 선택하세요<br>
+          ③ 새로 시작하려면 <b>새 세션 만들기</b>를 선택하세요 (이전 데이터는 서버에 남아 있을 수 있으니, 동일 코드가 발급되면 데이터가 삭제될 수 있으므로 새 코드로 발급됩니다)
+        </div>
+
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1.2rem;">
+          <button class="btn" id="retry" style="flex:1;min-width:120px;">🔄 다시 시도</button>
+          <button class="btn ghost" id="continue" style="flex:1;min-width:120px;">이대로 이어서</button>
+          <button class="btn ghost" id="fresh" style="flex:1;min-width:120px;">새 세션 만들기</button>
+        </div>
+      </div>
+    </div>
+  `));
+  document.getElementById('retry').onclick     = ()=>renderHostSetup();
+  document.getElementById('continue').onclick  = ()=>{
+    HOST_MERGES   = HOST.merges   || [];
+    HOST_EXCLUDED = HOST.excluded || {};
+    HOST_RAW = []; HOST_SUGG = []; MERGE_PICK = {}; MERGE_MODE = false;
+    drawHostSuggest();
+  };
+  document.getElementById('fresh').onclick = ()=>{
+    store.del('cv_host');
+    HOST = { code:genCode(), title:'' };
+    HOST_MERGES = []; HOST_EXCLUDED = {}; HOST_RAW = []; HOST_SUGG = [];
+    drawHostSetup();
+  };
 }
 
 /* ---------- 진행자 STEP 0: 세션 생성 (제목만) ---------- */
@@ -250,6 +366,7 @@ function applyMerges(){
 
 function drawHostSuggest(){
   app.innerHTML='';
+  saveHostState();   // v2.2: 진입 즉시 상태 저장 (재진입 시 복원 가능하도록)
   const joinUrl = location.origin + location.pathname + '?s=' + HOST.code;
   const c = el(`
     <div class="wrap narrow">
@@ -263,6 +380,7 @@ function drawHostSuggest(){
         <div class="lbl">참여자 접속 코드</div>
         <div class="code">${esc(HOST.code)}</div>
         <div class="url">${esc(joinUrl)}</div>
+        <div class="muted" style="font-size:.78rem;margin-top:.5rem;">💡 진행자 화면을 닫더라도, 같은 브라우저에서 다시 "진행자로 시작"을 누르면 이 세션으로 자동 복귀합니다</div>
       </div>
       <div class="row" style="margin-bottom:1.1rem;">
         <button class="btn ghost" id="copyurl">🔗 접속 링크 복사</button>
@@ -392,6 +510,7 @@ function doMerge(){
   delete HOST_EXCLUDED[/* 이전 라벨 흔적 정리 불필요 */ ''];
   const bar=document.getElementById('mergebar'); if(bar) bar.classList.add('hidden');
   applyMerges(); renderSuggList();
+  saveHostState();   // v2.2: 병합 규칙 보존
   toast(`'${rep}'(으)로 ${picked.length}개 후보를 병합했습니다`);
 }
 
@@ -460,6 +579,7 @@ function renderSuggList(){
       if(cb.checked) delete HOST_EXCLUDED[label]; else HOST_EXCLUDED[label]=true;
       cb.closest('.sugg-row').classList.toggle('excluded', !cb.checked);
       setText('cnt-keep', HOST_SUGG.filter(s=>!HOST_EXCLUDED[s.label]).length);
+      saveHostState();   // v2.2: 제외 상태 보존 (재진입 시 복원용)
     };
   });
   // 선택 체크박스 (병합 모드)
@@ -478,6 +598,7 @@ function renderSuggList(){
       HOST_MERGES = HOST_MERGES.filter(g=>g.rep!==rep);
       delete HOST_EXCLUDED[rep];
       applyMerges(); renderSuggList();
+      saveHostState();   // v2.2: 병합 규칙 변경 보존
       toast('병합을 해제했습니다');
     };
   });
