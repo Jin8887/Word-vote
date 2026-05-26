@@ -6,6 +6,9 @@
      · sessionStorage 기반 익명 voterId로 본인 식별 (동명이인 안전)
      · 새로고침 후에도 본인 제안 목록 유지
      · phase=suggest 단계에서만 삭제 가능 (투표 시작 후 자동 차단)
+   - v2.1 변경: 진행자 "직접 추가" 후보도 시트에 저장 + 진행자가 삭제 가능
+     · 진행자 전용 식별자(host_<code>)로 본인이 추가한 행만 삭제
+     · 참여자가 같은 키워드를 제안하면 진행자 추가는 가려짐(다른 사람도 제안한 후보가 됨)
    ※ 본 변경은 GAS Code.gs 측 수정도 필요합니다 (별도 가이드 참고)
    ========================================================= */
 
@@ -72,6 +75,20 @@ function saveMySuggestions(code, list){
 }
 function loadMySuggestions(code){
   return sstore.get('cv_my_sugg_' + code) || [];
+}
+
+/* 진행자 전용 식별자 (localStorage 영구 보관 / 세션 코드별 발급)
+   - 진행자가 "직접 추가" 한 후보를 시트에 저장할 때 voterId로 사용
+   - 같은 진행자가 같은 세션을 다시 열어도 동일 ID를 유지 → 본인 추가만 삭제 가능 */
+function getHostId(){
+  if(!HOST || !HOST.code) return 'host_unknown';
+  const key = 'cv_host_id_' + HOST.code;
+  let id = store.get(key);
+  if(!id){
+    id = 'host_' + HOST.code + '_' + Date.now().toString(36);
+    store.set(key, id);
+  }
+  return id;
 }
 
 /* ====================== 네트워크 (GAS 연동) ====================== */
@@ -283,14 +300,34 @@ function drawHostSuggest(){
 
   c.querySelector('#copyurl').onclick = ()=>copy(joinUrl,'접속 링크를 복사했습니다');
   c.querySelector('#copycode').onclick = ()=>copy(HOST.code,'코드를 복사했습니다');
-  c.querySelector('#addmanual').onclick = ()=>{
+  c.querySelector('#addmanual').onclick = async ()=>{
     const v = prompt('추가할 핵심가치 후보를 입력하세요');
-    if(v && v.trim()){
-      const label=v.trim();
-      if(!HOST_RAW.some(s=>s.label.toLowerCase()===label.toLowerCase())){
-        HOST_RAW.push({label, count:0, proposers:['진행자']});
-        applyMerges(); renderSuggList();
-      } else toast('이미 있는 후보입니다');
+    if(!v || !v.trim()) return;
+    const label = v.trim();
+    if(HOST_RAW.some(s=>s.label.toLowerCase()===label.toLowerCase())){
+      toast('이미 있는 후보입니다');
+      return;
+    }
+    try{
+      if(isConfigured()){
+        // v2: 진행자 추가도 시트에 저장 (voterId=진행자 식별자, name='진행자')
+        await gasPost('suggest', {
+          code: HOST.code,
+          voterId: getHostId(),
+          name: '진행자',
+          team: '',
+          candidate: label
+        });
+      }
+      // 즉시 반영 (다음 폴링까지 기다리지 않도록)
+      HOST_RAW.push({label, count:1, proposers:['진행자']});
+      applyMerges();
+      renderSuggList();
+      toast('후보를 추가했습니다');
+    }catch(err){
+      toast(err.message==='NOT_CONFIGURED'
+        ? '연동 설정 후 추가 가능합니다'
+        : '추가 실패: ' + err.message);
     }
   };
   // 병합 모드 토글
@@ -362,16 +399,15 @@ async function refreshHostSuggest(){
   if(!isConfigured()) return;
   try{
     const data = await gasGet({ action:'getSuggestions', code:HOST.code });
-    // 백엔드 원본 + 진행자가 직접 추가한 후보(count=0, proposers에 '진행자') 유지
-    const manual = HOST_RAW.filter(s=>(s.proposers||[]).indexOf('진행자')>=0 &&
-      !(data.suggestions||[]).some(d=>d.label.toLowerCase()===s.label.toLowerCase()));
-    HOST_RAW = (data.suggestions || []).concat(manual);
+    // v2: 진행자 추가도 시트에 저장되므로 manual 분리 불필요
+    HOST_RAW = data.suggestions || [];
     applyMerges();
     renderSuggList();
   }catch(err){ /* 폴링 실패는 무시 */ }
 }
 
 function renderSuggList(){
+  injectHostSuggStyles();
   const box = document.getElementById('sugglist');
   if(!box) return;
   const totalSugg = HOST_SUGG.reduce((a,s)=>a+(s.count||0),0);
@@ -391,6 +427,12 @@ function renderSuggList(){
     const picked = !!MERGE_PICK[s.label];
     const proposers = (s.proposers||[]).slice(0,6).join(', ') + ((s.proposers||[]).length>6?' 외':'');
     const isMerged = (s.members||[]).length>1;
+    // v2: 진행자가 단독으로 추가한 후보(다른 사람이 같은 라벨로 제안 안 함)에만 삭제 버튼 표시
+    //     - 병합되지 않은 단독 항목 & proposers가 '진행자' 하나뿐일 때만
+    const isHostOnly = !isMerged
+      && (s.proposers||[]).length === 1
+      && s.proposers[0] === '진행자'
+      && !MERGE_MODE;
     // 병합 모드: 선택용 행 / 일반 모드: 포함 체크 행
     const control = MERGE_MODE
       ? `<label class="sugg-check pick">
@@ -402,11 +444,12 @@ function renderSuggList(){
     return `<div class="sugg-row ${excluded&&!MERGE_MODE?'excluded':''} ${picked?'picked':''}" data-label="${esc(s.label)}">
       ${control}
       <div class="sugg-info">
-        <div class="sugg-name">${esc(s.label)}${isMerged?` <span class="merge-tag">병합 ${s.members.length}</span>`:''}</div>
+        <div class="sugg-name">${esc(s.label)}${isMerged?` <span class="merge-tag">병합 ${s.members.length}</span>`:''}${isHostOnly?` <span class="host-tag">진행자 추가</span>`:''}</div>
         ${proposers?`<div class="sugg-meta">제안: ${esc(proposers)}</div>`:''}
         ${isMerged?`<div class="sugg-meta">합쳐진 후보: ${esc(s.members.join(', '))} · <span class="unmerge" data-label="${esc(s.label)}">병합 해제</span></div>`:''}
       </div>
       ${s.count?`<div class="sugg-cnt">×${s.count}</div>`:`<div class="sugg-cnt manual">직접</div>`}
+      ${isHostOnly?`<button type="button" class="host-del" data-label="${esc(s.label)}" aria-label="${esc(s.label)} 삭제" title="진행자 추가 후보 삭제">🗑️</button>`:''}
     </div>`;
   }).join('');
 
@@ -438,8 +481,77 @@ function renderSuggList(){
       toast('병합을 해제했습니다');
     };
   });
+  // v2: 진행자 추가 후보 삭제
+  box.querySelectorAll('.host-del').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const label = btn.dataset.label;
+      if(!confirm(`진행자가 추가한 '${label}' 후보를 삭제할까요?\n(다시 추가할 수 있습니다)`)) return;
+
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = '…';
+      try{
+        if(isConfigured()){
+          await gasPost('removeSuggestion', {
+            code: HOST.code,
+            voterId: getHostId(),
+            name: '진행자',
+            team: '',
+            candidate: label
+          });
+        }
+        // 즉시 반영
+        HOST_RAW = HOST_RAW.filter(s => s.label.toLowerCase() !== label.toLowerCase());
+        delete HOST_EXCLUDED[label];
+        applyMerges();
+        renderSuggList();
+        toast('후보를 삭제했습니다');
+      }catch(err){
+        btn.disabled = false; btn.textContent = prev;
+        if(err.message === 'NOT_CONFIGURED'){
+          toast('연동 설정 후 삭제 가능합니다');
+        } else if(err.message === 'NOT_FOUND'){
+          // 서버와 어긋남: 로컬에서만 정리
+          HOST_RAW = HOST_RAW.filter(s => s.label.toLowerCase() !== label.toLowerCase());
+          applyMerges();
+          renderSuggList();
+          toast('이미 처리된 후보입니다');
+        } else {
+          toast('삭제 실패: ' + err.message);
+        }
+      }
+    };
+  });
 
   updateMergeBar();
+}
+
+/* 진행자 화면 전용 추가 스타일 (진행자 추가 후보 태그/휴지통 버튼)
+   - index.html 수정 없이 동적으로 1회 주입 */
+function injectHostSuggStyles(){
+  if(document.getElementById('cv-host-sugg-styles')) return;
+  const s = document.createElement('style');
+  s.id = 'cv-host-sugg-styles';
+  s.textContent = `
+    .host-tag{
+      display:inline-block; background:#fff2e6; color:#b25a17;
+      font-size:.66rem; font-weight:800; padding:.08rem .4rem;
+      border-radius:5px; vertical-align:middle; margin-left:.2rem;
+    }
+    .sugg-row .host-del{
+      background:none; border:1px solid var(--line); border-radius:8px;
+      width:2rem; height:2rem; cursor:pointer; font-size:.9rem; line-height:1;
+      display:inline-flex; align-items:center; justify-content:center;
+      flex-shrink:0; margin-left:.4rem; padding:0;
+      transition:background .15s, border-color .15s;
+      touch-action:manipulation;
+    }
+    .sugg-row .host-del:hover,
+    .sugg-row .host-del:focus{
+      background:#fdecea; border-color:#c0392b; outline:none;
+    }
+    .sugg-row .host-del:disabled{ opacity:.45; cursor:not-allowed; }
+  `;
+  document.head.appendChild(s);
 }
 
 function updateMergeBar(){
