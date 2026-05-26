@@ -14,7 +14,12 @@
      · 진행자 모드 진입 시 서버에 phase 확인 → 적절한 화면으로 자동 이동
      · 자동 복원 실패 시(네트워크 오류 등) drawHostRecovery로 사용자 선택 안내
      · 같은 브라우저 한정. 다른 기기/브라우저 재진입은 별도 인증이 필요하므로 미지원
-   ※ 본 변경은 GAS Code.gs 측 수정도 필요합니다 (v2 시점에서 이미 완료)
+   - v2.3 변경: 결과 화면에서 "같은 코드로 다시 시작" 초기화 기능 추가
+     · createSession_이 이미 같은 코드의 기존 데이터를 정리하고 새로 만들도록 동작하므로 GAS 수정 불필요
+     · 2단계 확인 절차 (의도 확인 → 코드 직접 입력)로 우발적 초기화 방지
+     · 진행자 측 메타정보(병합/제외/확정후보)도 함께 초기화
+     · 참여자 측 sessionStorage 잔존 문제는 진행자가 새로고침 안내로 운영 처리
+   ※ Code.gs는 v2 시점에서만 수정 완료. v2.1~v2.3은 app.js 단독 변경.
    ========================================================= */
 
 'use strict';
@@ -783,13 +788,68 @@ async function drawHostResult(){
         <button class="btn ghost" id="refresh">↻ 다시 집계</button>
       </div>
       <button class="btn lg full" id="save" style="margin-top:.7rem;">📷 결과 이미지 저장</button>
+
+      <div class="card" style="margin-top:1.2rem;border-color:#e8d4a0;background:#fffbf2;">
+        <h3 style="color:#8a6300;margin:0 0 .4rem;">🔄 같은 코드로 다시 시작하기</h3>
+        <p class="sub" style="margin:.3rem 0 .8rem;">현재 세션의 <b>모든 후보 제안과 투표 결과를 삭제</b>하고, 같은 코드(<b>${esc(HOST.code)}</b>)로 새 활동을 시작합니다. 이미 공유된 참여자 링크는 그대로 사용할 수 있습니다.</p>
+        <button class="btn outline" id="reset" style="border-color:#c0392b;color:#c0392b;">이 코드로 초기화하고 다시 시작</button>
+      </div>
     </div>
   `);
   app.appendChild(c);
   c.querySelector('#back').onclick = ()=>drawHostLive();
   c.querySelector('#refresh').onclick = ()=>drawHostResult();
   c.querySelector('#save').onclick = ()=>saveResultImage('resultarea');
+  c.querySelector('#reset').onclick = ()=>resetSession();
   await loadResults('resultarea', HOST.code, HOST.candidates);
+}
+
+/* v2.3: 같은 코드로 세션 초기화
+   - 시트의 Sessions / Suggestions / Votes에서 해당 코드 행을 모두 삭제 후 새로 생성
+   - createSession_ 함수가 이미 같은 동작을 수행하므로 별도 GAS 액션 불필요
+   - 진행자 측 상태(병합/제외/확정후보)는 모두 초기화하고 code/title만 유지
+   - 참여자가 다시 접속하면 새 세션으로 들어가게 됨 (createdAt 변경으로 sessionStorage 정리 트리거) */
+async function resetSession(){
+  if(!HOST || !HOST.code){ toast('세션 정보가 없습니다'); return; }
+
+  // 강력한 확인 절차 (2단계: confirm으로 의도 확인 + prompt로 코드 직접 입력)
+  const ok = confirm(
+    `⚠️ 세션 ${HOST.code} 초기화\n\n` +
+    `삭제되는 것:\n` +
+    `• 모든 후보 제안 데이터\n` +
+    `• 모든 투표 결과\n` +
+    `• 진행자가 정리한 병합/제외 설정\n\n` +
+    `유지되는 것:\n` +
+    `• 세션 코드 (${HOST.code})\n` +
+    `• 세션 제목\n` +
+    `• 참여자 접속 링크\n\n` +
+    `이 작업은 되돌릴 수 없습니다. 계속할까요?`
+  );
+  if(!ok) return;
+
+  // 한 번 더 확인: 코드를 직접 입력하게 하여 우발적 초기화 방지
+  const typed = prompt(`정말로 초기화하려면 세션 코드 4자리(${HOST.code})를 입력하세요.`);
+  if(!typed || typed.trim() !== HOST.code){
+    toast('초기화가 취소되었습니다');
+    return;
+  }
+
+  try{
+    if(isConfigured()){
+      // createSession은 같은 코드의 기존 세션/제안/투표를 모두 삭제하고 새로 만든다
+      await gasPost('createSession', { code: HOST.code, title: HOST.title || '' });
+    }
+    // 진행자 측 상태 초기화 (code/title은 유지)
+    HOST = { code: HOST.code, title: HOST.title || '' };
+    HOST_RAW = []; HOST_SUGG = []; HOST_EXCLUDED = {}; HOST_MERGES = [];
+    MERGE_MODE = false; MERGE_PICK = {};
+    saveHostState();
+
+    toast(`세션 ${HOST.code}을(를) 초기화했습니다`);
+    drawHostSuggest();
+  }catch(err){
+    toast('초기화 실패: ' + (err.message==='NOT_CONFIGURED' ? '연동 설정이 필요합니다' : err.message));
+  }
 }
 
 /* 결과 렌더링 (공용) */
