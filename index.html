@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>핵심가치 선정 · 투표</title>
 <link rel="preconnect" href="https://fastly.jsdelivr.net" crossorigin />
 <link rel="stylesheet" as="style" crossorigin
@@ -31,7 +31,9 @@
     margin:0;font-family:'Pretendard',-apple-system,BlinkMacSystemFont,sans-serif;
     background:var(--bg);color:var(--ink);
     line-height:1.55;-webkit-font-smoothing:antialiased;
-    padding:0;min-height:100vh;
+    padding:0;min-height:100vh;min-height:100dvh;
+    padding-left:env(safe-area-inset-left);
+    padding-right:env(safe-area-inset-right);
   }
   .wrap{max-width:1180px;margin:0 auto;padding:1.4rem 1.1rem 4rem;}
   .wrap.narrow{max-width:560px;}
@@ -58,8 +60,9 @@
 
   label.fld{display:block;font-weight:700;font-size:.92rem;margin:0 0 .4rem;color:var(--ink);}
   input[type=text],input[type=number],textarea,select{
-    width:100%;font:inherit;font-size:1rem;padding:.8rem .9rem;border:1.5px solid var(--line);
+    width:100%;font:inherit;font-size:16px;padding:.85rem .9rem;border:1.5px solid var(--line);
     border-radius:10px;background:#fff;color:var(--ink);transition:border-color .15s;
+    -webkit-appearance:none;appearance:none;
   }
   input:focus,textarea:focus,select:focus{outline:none;border-color:var(--green-500);}
   textarea{resize:vertical;min-height:4rem;line-height:1.5;}
@@ -68,7 +71,7 @@
     display:inline-flex;align-items:center;justify-content:center;gap:.4rem;
     font:inherit;font-weight:700;font-size:1rem;padding:.85rem 1.4rem;border:none;
     border-radius:11px;cursor:pointer;transition:transform .08s, background .15s, opacity .15s;
-    background:var(--green-600);color:#fff;
+    background:var(--green-600);color:#fff;min-height:48px;touch-action:manipulation;
   }
   .btn:active{transform:scale(.98);}
   .btn:disabled{opacity:.45;cursor:not-allowed;}
@@ -144,6 +147,7 @@
     cursor:pointer;transition:all .12s;background:#fff;}
   .scale .opt .n{font-size:1.25rem;font-weight:800;color:var(--ink-soft);line-height:1;}
   .scale .opt .t{font-size:.66rem;color:var(--ink-soft);margin-top:.3rem;font-weight:600;}
+  .scale .opt .od{display:none;}
   .scale .opt:hover{border-color:var(--green-500);}
   .scale .opt.sel{background:var(--green-600);border-color:var(--green-600);}
   .scale .opt.sel .n,.scale .opt.sel .t{color:#fff;}
@@ -236,19 +240,78 @@
   .help{font-size:.85rem;color:var(--ink-soft);background:var(--green-50);border-radius:10px;
     padding:.8rem 1rem;margin-top:.6rem;line-height:1.6;}
 
+  /* sticky 제출 바 (safe-area 대응) */
+  .submit-bar{position:sticky;bottom:.6rem;box-shadow:0 -2px 16px rgba(0,0,0,.08);}
+
   @media (max-width:560px){
     :root{--fs-base:16px;}
+    .wrap{padding:1rem .85rem 3rem;}
+    .topbar{margin-bottom:1rem;}
     .topbar h1{font-size:1.4rem;}
+    .topbar .check{width:1.9rem;height:1.9rem;}
+    .topbar .ribbon{width:2rem;height:2.5rem;}
     .landing-grid{grid-template-columns:1fr;}
-    .scale{gap:.3rem;}
-    .scale .opt .t{font-size:.6rem;}
-    .res-row{flex-wrap:wrap;}
-    .res-row .bar-wrap{flex-basis:100%;order:3;}
+    .card{padding:1.3rem 1.1rem;border-radius:13px;}
+    .card h2{font-size:1.12rem;}
+
+    /* 단계 표시: 글자 줄임 */
+    .steps .s{font-size:.74rem;padding:.5rem .2rem;}
+
+    /* 5점 척도: 모바일에서 세로 배치 (오터치 방지, 설명 함께 표시) */
+    .scale{grid-template-columns:1fr;gap:.5rem;}
+    .scale .opt{display:flex;flex-direction:row;align-items:center;gap:.7rem;
+      padding:.85rem .9rem;min-height:56px;text-align:left;}
+    .scale .opt .n{font-size:1.4rem;width:2rem;flex-shrink:0;text-align:center;}
+    .scale .opt .t{font-size:.95rem;margin-top:0;font-weight:800;color:var(--ink);flex-shrink:0;}
+    .scale .opt .od{display:block;font-size:.78rem;color:var(--ink-soft);margin-left:auto;
+      text-align:right;font-weight:500;}
+    .scale .opt.sel .t{color:#fff;}
+    .scale .opt.sel .od{color:rgba(255,255,255,.85);}
+
+    /* 후보 이름 가독성 */
+    .vote-cand{padding:1rem .9rem 1.1rem;}
+    .vote-cand .name{font-size:1.08rem;}
+
+    /* 범례: 세로 척도에 설명이 함께 나오므로 컴팩트하게 */
     .legend{grid-template-columns:repeat(5,1fr);gap:.25rem;}
-    .legend .lg{padding:.5rem .15rem;}
-    .legend .lg .circle{width:2rem;height:2rem;font-size:.78rem;}
-    .legend .lg .h{font-size:.72rem;}
+    .legend .lg{padding:.4rem .1rem;}
+    .legend .lg .circle{width:1.8rem;height:1.8rem;font-size:.72rem;margin-bottom:.25rem;}
+    .legend .lg .h{font-size:.62rem;}
     .legend .lg .d{display:none;}
+
+    /* 결과 행: 막대 아래로 */
+    .res-row{flex-wrap:wrap;gap:.6rem;}
+    .res-row .bar-wrap{flex-basis:100%;order:3;}
+    .res-row .score{font-size:1rem;}
+
+    /* 세션 코드 박스 */
+    .code-box .code{font-size:2.2rem;letter-spacing:.25rem;}
+    .code-box .url{font-size:.78rem;}
+
+    /* 제안 목록: 손가락 터치 영역 확대 */
+    .sugg-row{padding:.85rem .2rem;}
+    .sugg-check{width:1.7rem;height:1.7rem;}
+    .sugg-name{font-size:1.05rem;}
+
+    /* 통계 카드 글자 축소 */
+    .stat .v{font-size:1.45rem;}
+    .stat .l{font-size:.72rem;}
+
+    /* 버튼 가로 묶음이 좁으면 줄바꿈 허용 */
+    .mergebar{flex-direction:column;align-items:stretch;}
+    .mergebar-btns{justify-content:stretch;}
+    .mergebar-btns .btn{flex:1;}
+
+    /* sticky 제출바: 홈바 여백 확보 */
+    .submit-bar{bottom:calc(.6rem + env(safe-area-inset-bottom));}
+  }
+
+  /* 아주 좁은 화면 (~360px) 추가 보정 */
+  @media (max-width:360px){
+    .scale .opt .t{font-size:.88rem;}
+    .scale .opt .od{font-size:.72rem;}
+    .scale .opt .n{font-size:1.25rem;}
+    .legend .lg .h{font-size:.58rem;}
   }
 </style>
 </head>
