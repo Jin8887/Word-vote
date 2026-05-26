@@ -2,6 +2,11 @@
    핵심가치 선정 · 투표  ―  app.js
    - 운영자(host) / 참여자(voter) 단일 페이지
    - Google Apps Script 웹앱과 연동 (저장 + 실시간 집계)
+   - v2 변경: 참여자가 본인이 제안한 후보를 삭제할 수 있도록 기능 추가
+     · sessionStorage 기반 익명 voterId로 본인 식별 (동명이인 안전)
+     · 새로고침 후에도 본인 제안 목록 유지
+     · phase=suggest 단계에서만 삭제 가능 (투표 시작 후 자동 차단)
+   ※ 본 변경은 GAS Code.gs 측 수정도 필요합니다 (별도 가이드 참고)
    ========================================================= */
 
 'use strict';
@@ -39,6 +44,35 @@ const store = {
   set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} },
   del(k){ try{ localStorage.removeItem(k); }catch{} },
 };
+
+/* sessionStorage 안전 래퍼 (참여자 본인 식별 / 본인 제안 보관용)
+   - 같은 탭 내에서만 유지되어, 다른 사람과 격리되는 익명 식별자 보관에 적합 */
+const sstore = {
+  get(k){ try{ return JSON.parse(sessionStorage.getItem(k)); }catch{ return null; } },
+  set(k,v){ try{ sessionStorage.setItem(k, JSON.stringify(v)); }catch{} },
+  del(k){ try{ sessionStorage.removeItem(k); }catch{} },
+};
+
+/* 참여자 익명 식별자 발급/조회
+   - 같은 브라우저 탭 안에서만 동일 ID 유지 (탭 닫으면 소멸)
+   - 모든 suggest/removeSuggestion 호출에 동봉 → 본인 제안만 삭제 가능 */
+function getVoterId(){
+  let id = sstore.get('cv_voter_id');
+  if(!id){
+    id = 'v_' + Date.now().toString(36) + Math.random().toString(36).slice(2,10);
+    sstore.set('cv_voter_id', id);
+  }
+  return id;
+}
+
+/* 참여자 본인 제안 목록 보관 (새로고침 대응)
+   - 세션 코드별로 분리 보관 (다른 활동과 섞이지 않도록) */
+function saveMySuggestions(code, list){
+  sstore.set('cv_my_sugg_' + code, list || []);
+}
+function loadMySuggestions(code){
+  return sstore.get('cv_my_sugg_' + code) || [];
+}
 
 /* ====================== 네트워크 (GAS 연동) ====================== */
 /* GAS는 CORS 프리플라이트를 피하려고 text/plain POST 사용 */
@@ -628,8 +662,40 @@ function drawVoterJoin(prefillCode){
 }
 
 /* ---------- 참여자: 후보 제안 ---------- */
+
+/* 참여자 화면 전용 추가 스타일 (chip 안의 삭제 버튼)
+   - index.html을 건드리지 않기 위해 동적으로 <style>을 1회만 주입 */
+function injectVoterChipStyles(){
+  if(document.getElementById('cv-voter-chip-styles')) return;
+  const s = document.createElement('style');
+  s.id = 'cv-voter-chip-styles';
+  s.textContent = `
+    .voter-chips .chip.removable{
+      display:inline-flex; align-items:center; gap:.4rem;
+      padding:.3rem .35rem .3rem .7rem;
+    }
+    .voter-chips .chip-del{
+      background:rgba(0,0,0,.06); border:none; color:var(--green-700);
+      width:1.35rem; height:1.35rem; border-radius:50%; cursor:pointer;
+      font-size:1.05rem; font-weight:800; line-height:1;
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:0; transition:background .15s, color .15s;
+      touch-action:manipulation;
+    }
+    .voter-chips .chip-del:hover,
+    .voter-chips .chip-del:focus{
+      background:rgba(192,57,43,.15); color:#c0392b; outline:none;
+    }
+    .voter-chips .chip-del:disabled{ opacity:.45; cursor:not-allowed; }
+    .mine-hint{ font-size:.78rem; color:var(--ink-soft); margin-top:.4rem; }
+  `;
+  document.head.appendChild(s);
+}
+
 function drawVoterSuggest(){
   app.innerHTML='';
+  injectVoterChipStyles();
+
   const c = el(`
     <div class="wrap narrow">
       <div class="card">
@@ -648,16 +714,76 @@ function drawVoterSuggest(){
   `);
   app.appendChild(c);
 
-  VOTE.mySuggestions = VOTE.mySuggestions || [];
+  // 새로고침 대응: sessionStorage에서 본인 제안 목록 복원
+  VOTE.mySuggestions = VOTE.mySuggestions && VOTE.mySuggestions.length
+    ? VOTE.mySuggestions
+    : loadMySuggestions(VOTE.code);
+
   const input = c.querySelector('#cand');
   input.focus();
 
   function renderMine(){
-    const box=c.querySelector('#mine');
-    box.innerHTML = VOTE.mySuggestions.length
-      ? `<div class="muted" style="font-size:.84rem;margin-bottom:.4rem;font-weight:700;">내가 제안한 후보</div>
-         <div class="voter-chips">${VOTE.mySuggestions.map(s=>`<span class="chip">${esc(s)}</span>`).join('')}</div>`
-      : '';
+    const box = c.querySelector('#mine');
+    if(!VOTE.mySuggestions.length){
+      box.innerHTML = '';
+      return;
+    }
+    box.innerHTML = `
+      <div class="muted" style="font-size:.84rem;margin-bottom:.4rem;font-weight:700;">내가 제안한 후보 <span class="muted" style="font-weight:500;">(× 버튼으로 취소 가능)</span></div>
+      <div class="voter-chips">
+        ${VOTE.mySuggestions.map(s=>`
+          <span class="chip removable">
+            ${esc(s)}
+            <button type="button" class="chip-del" data-cand="${esc(s)}" aria-label="${esc(s)} 제안 삭제">×</button>
+          </span>`).join('')}
+      </div>
+      <div class="mine-hint">삭제 후 다시 같은 키워드를 제안할 수 있습니다.</div>
+    `;
+    bindMineDelete();
+  }
+
+  /* 본인 제안 삭제 버튼 핸들러 */
+  function bindMineDelete(){
+    c.querySelectorAll('.chip-del').forEach(btn=>{
+      btn.onclick = async (e)=>{
+        e.stopPropagation();
+        const cand = btn.dataset.cand;
+        if(!cand) return;
+        if(!confirm(`'${cand}' 제안을 취소할까요?\n(취소 후 다시 제안할 수 있습니다)`)) return;
+
+        const prev = btn.textContent;
+        btn.disabled = true; btn.textContent = '…';
+        try{
+          if(isConfigured()){
+            await gasPost('removeSuggestion', {
+              code: VOTE.code,
+              voterId: getVoterId(),
+              name: VOTE.name,
+              team: VOTE.team,
+              candidate: cand
+            });
+          }
+          // 클라이언트 상태 갱신
+          VOTE.mySuggestions = VOTE.mySuggestions.filter(s => s.toLowerCase() !== cand.toLowerCase());
+          saveMySuggestions(VOTE.code, VOTE.mySuggestions);
+          renderMine();
+          toast('제안을 취소했습니다');
+        }catch(err){
+          btn.disabled = false; btn.textContent = prev;
+          if(err.message === 'NOT_CONFIGURED'){
+            toast('연동 설정 후 삭제 가능합니다');
+          } else if(err.message === 'NOT_FOUND'){
+            // 서버 상태와 어긋난 경우: 로컬에서만 정리
+            VOTE.mySuggestions = VOTE.mySuggestions.filter(s => s.toLowerCase() !== cand.toLowerCase());
+            saveMySuggestions(VOTE.code, VOTE.mySuggestions);
+            renderMine();
+            toast('이미 처리된 제안입니다');
+          } else {
+            toast('삭제 실패: ' + err.message);
+          }
+        }
+      };
+    });
   }
   renderMine();
 
@@ -668,8 +794,17 @@ function drawVoterSuggest(){
     const btn=c.querySelector('#add'), prev=btn.innerHTML;
     btn.disabled=true; btn.innerHTML='…';
     try{
-      if(isConfigured()) await gasPost('suggest', { code:VOTE.code, name:VOTE.name, team:VOTE.team, candidate:v });
+      if(isConfigured()){
+        await gasPost('suggest', {
+          code: VOTE.code,
+          voterId: getVoterId(),
+          name: VOTE.name,
+          team: VOTE.team,
+          candidate: v
+        });
+      }
       VOTE.mySuggestions.push(v);
+      saveMySuggestions(VOTE.code, VOTE.mySuggestions);
       input.value=''; renderMine(); toast('제안 완료'); input.focus();
     }catch(err){
       toast(err.message==='NOT_CONFIGURED'?'연동 설정 후 제안 가능합니다':err.message);
