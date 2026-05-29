@@ -961,9 +961,7 @@ function drawVoterJoin(prefillCode){
         <input type="text" id="code" inputmode="numeric" maxlength="4" placeholder="예: 1234"
           value="${esc(prefillCode||'')}" style="margin-bottom:1rem;letter-spacing:.3rem;font-weight:700;font-size:1.3rem;text-align:center;">
         <label class="fld">이름</label>
-        <input type="text" id="name" maxlength="20" placeholder="이름 또는 닉네임" style="margin-bottom:1rem;">
-        <label class="fld">팀 <span class="muted">(선택)</span></label>
-        <input type="text" id="team" maxlength="20" placeholder="예: 1팀" style="margin-bottom:1.3rem;">
+        <input type="text" id="name" maxlength="20" placeholder="이름 또는 닉네임" style="margin-bottom:1.3rem;">
         <button class="btn lg full" id="enter">참여하기 →</button>
       </div>
     </div>
@@ -974,7 +972,7 @@ function drawVoterJoin(prefillCode){
   c.querySelector('#enter').onclick = async (e)=>{
     const code = c.querySelector('#code').value.trim();
     const name = c.querySelector('#name').value.trim();
-    const team = c.querySelector('#team').value.trim();
+    const team = '';
     if(!/^\d{4}$/.test(code)){ toast('4자리 코드를 입력하세요'); return; }
     if(!name){ toast('이름을 입력하세요'); return; }
 
