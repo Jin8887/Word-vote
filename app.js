@@ -310,6 +310,16 @@ function drawHostSetup(){
           ④ 참여자들이 5점 척도로 투표 → 자동 집계</div>
       </div>
       <button class="btn lg full" id="create">세션 만들기 →</button>
+      <div class="card" style="margin-top:.8rem;border-style:dashed;border-color:#b0c4de;">
+        <div style="font-size:.84rem;font-weight:700;color:#4a6fa5;margin-bottom:.5rem;">📂 기존 세션 결과 보기</div>
+        <div class="row" style="gap:.5rem;">
+          <input type="text" id="load-code" inputmode="numeric" maxlength="4"
+            placeholder="코드 4자리"
+            style="flex:2;letter-spacing:.3rem;font-weight:700;text-align:center;">
+          <button class="btn ghost" id="load-btn" style="flex:1.5;">결과 불러오기</button>
+        </div>
+        <p class="muted" style="font-size:.78rem;margin-top:.5rem;">이전에 진행한 세션 코드를 입력하면 집계 결과 화면으로 바로 이동합니다.</p>
+      </div>
     </div>
   `);
   app.appendChild(c);
@@ -332,6 +342,39 @@ function drawHostSetup(){
       else toast('세션 생성 실패: '+err.message);
     }
   };
+
+  /* ── 기존 세션 불러오기 ── */
+  const loadCodeInput = c.querySelector('#load-code');
+  const loadBtn = c.querySelector('#load-btn');
+  async function loadExistingSession(){
+    const code = loadCodeInput.value.trim();
+    if(!/^\d{4}$/.test(code)){ toast('4자리 코드를 입력하세요'); return; }
+    const prev = loadBtn.innerHTML;
+    loadBtn.disabled=true; loadBtn.innerHTML='<span class="spinner"></span> 확인 중…';
+    try{
+      const data = await gasGet({ action:'getSession', code });
+      HOST = {
+        code: data.code,
+        title: data.title || '',
+        candidates: data.candidates && data.candidates.length ? data.candidates : []
+      };
+      HOST_MERGES=[]; HOST_EXCLUDED={}; HOST_RAW=[]; HOST_SUGG=[];
+      store.set('cv_host', HOST);
+      toast(`세션 ${code} 결과를 불러옵니다`);
+      drawHostResult();
+    }catch(err){
+      loadBtn.disabled=false; loadBtn.innerHTML=prev;
+      if(err.message==='NOT_CONFIGURED'){
+        toast('연동 설정 후 이용 가능합니다');
+      }else if(/찾을 수 없|NOT_FOUND/.test(err.message)){
+        toast(`코드 ${code}에 해당하는 세션이 없습니다`);
+      }else{
+        toast('불러오기 실패: ' + err.message);
+      }
+    }
+  }
+  loadBtn.onclick = loadExistingSession;
+  loadCodeInput.addEventListener('keydown', e=>{ if(e.key==='Enter') loadExistingSession(); });
 }
 
 /* ---------- 진행자 STEP 1: 후보 제안 실시간 모니터링 + 정리 ---------- */
